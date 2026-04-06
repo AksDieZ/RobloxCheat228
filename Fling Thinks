@@ -1,0 +1,1379 @@
+-- RAGE PANEL + SLOT TIMER - Полная версия
+local Players = game:GetService("Players")
+local LocalPlayer = Players.LocalPlayer
+local UIS = game:GetService("UserInputService")
+local Camera = workspace.CurrentCamera
+local RunService = game:GetService("RunService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Lighting = game:GetService("Lighting")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+-- ==================== SLOT TIMER (встроенный) ====================
+local function setupSlotTimer(parentGui)
+    local slotGui
+    if parentGui then
+        slotGui = parentGui
+    else
+        slotGui = Instance.new("ScreenGui")
+        slotGui.Name = "SlotTimer"
+        slotGui.Parent = game:GetService("CoreGui")
+        slotGui.ResetOnSpawn = false
+    end
+    
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Size = UDim2.new(0, 200, 0, 60)
+    mainFrame.Position = UDim2.new(0, 10, 0.5, -30)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(15, 12, 30)
+    mainFrame.BackgroundTransparency = 0.1
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Parent = slotGui
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 12)
+    corner.Parent = mainFrame
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(120, 80, 200)
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.5
+    stroke.Parent = mainFrame
+    
+    local titleBar = Instance.new("Frame")
+    titleBar.Size = UDim2.new(1, 0, 0, 25)
+    titleBar.BackgroundColor3 = Color3.fromRGB(45, 35, 90)
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = mainFrame
+    
+    local titleCorner = Instance.new("UICorner")
+    titleCorner.CornerRadius = UDim.new(0, 12)
+    titleCorner.Parent = titleBar
+    
+    local titleText = Instance.new("TextLabel")
+    titleText.Size = UDim2.new(1, 0, 1, 0)
+    titleText.BackgroundTransparency = 1
+    titleText.Text = "🎰 SLOT TIMER"
+    titleText.TextColor3 = Color3.fromRGB(255, 200, 100)
+    titleText.Font = Enum.Font.GothamBold
+    titleText.TextSize = 11
+    titleText.TextXAlignment = Enum.TextXAlignment.Center
+    titleText.Parent = titleBar
+    
+    local timeLabel = Instance.new("TextLabel")
+    timeLabel.Size = UDim2.new(1, 0, 0, 30)
+    timeLabel.Position = UDim2.new(0, 0, 0, 28)
+    timeLabel.BackgroundTransparency = 1
+    timeLabel.Text = "--:--"
+    timeLabel.TextColor3 = Color3.fromRGB(220, 220, 255)
+    timeLabel.Font = Enum.Font.GothamBold
+    timeLabel.TextSize = 18
+    timeLabel.TextXAlignment = Enum.TextXAlignment.Center
+    timeLabel.Parent = mainFrame
+    
+    local dragging = false
+    local dragStart, startPos
+    
+    titleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = mainFrame.Position
+        end
+    end)
+    
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+    
+    UIS.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    
+    local remainingSeconds = 0
+    local slotTimeEvent = nil
+    
+    for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("RemoteEvent") and obj.Name == "SlotTime" then
+            slotTimeEvent = obj
+            break
+        end
+    end
+    
+    if not slotTimeEvent then
+        for _, obj in pairs(game:GetDescendants()) do
+            if obj:IsA("RemoteEvent") and obj.Name == "SlotTime" then
+                slotTimeEvent = obj
+                break
+            end
+        end
+    end
+    
+    if slotTimeEvent then
+        slotTimeEvent.OnClientEvent:Connect(function(data)
+            if type(data) == "number" then
+                remainingSeconds = data
+            elseif type(data) == "string" then
+                local mins, secs = data:match("(%d+):(%d+)")
+                if mins and secs then
+                    remainingSeconds = tonumber(mins) * 60 + tonumber(secs)
+                else
+                    local num = tonumber(data)
+                    if num then remainingSeconds = num end
+                end
+            elseif type(data) == "table" then
+                if data.Time then remainingSeconds = data.Time end
+                if data.Seconds then remainingSeconds = data.Seconds end
+                if data.remaining then remainingSeconds = data.remaining end
+            end
+        end)
+        
+        pcall(function()
+            slotTimeEvent:FireServer()
+        end)
+    end
+    
+    local function findSlotValue()
+        local searchPaths = {
+            LocalPlayer:FindFirstChild("SlotTime"),
+            LocalPlayer:FindFirstChild("SlotTimes"),
+            ReplicatedStorage:FindFirstChild("SlotTime")
+        }
+        for _, val in pairs(searchPaths) do
+            if val and (val:IsA("IntValue") or val:IsA("NumberValue")) then
+                local timeVal = val.Value
+                if timeVal and timeVal > 0 then
+                    remainingSeconds = timeVal
+                    return true
+                end
+            end
+        end
+        return false
+    end
+    
+    findSlotValue()
+    
+    local function manualSetTime()
+        local userInput = game:GetService("StarterGui"):SetCore("InputBox", {
+            Title = "Slot Timer",
+            Text = "Осталось минут до крутки:",
+            DefaultText = "15"
+        })
+        if userInput then
+            local minutes = tonumber(userInput)
+            if minutes and minutes > 0 then
+                remainingSeconds = minutes * 60
+                game:GetService("StarterGui"):SetCore("SendNotification", {
+                    Title = "Slot Timer",
+                    Text = "Time set to " .. minutes .. " minutes",
+                    Duration = 2
+                })
+            end
+        end
+    end
+    
+    local function requestTime()
+        if slotTimeEvent then
+            pcall(function() slotTimeEvent:FireServer() end)
+        end
+    end
+    
+    local function updateTime()
+        if remainingSeconds > 0 then
+            local mins = math.floor(remainingSeconds / 60)
+            local secs = remainingSeconds % 60
+            if mins >= 60 then
+                local hours = math.floor(mins / 60)
+                mins = mins % 60
+                timeLabel.Text = string.format("%02d:%02d:%02d", hours, mins, secs)
+            else
+                timeLabel.Text = string.format("%02d:%02d", mins, secs)
+            end
+            timeLabel.TextColor3 = Color3.fromRGB(220, 220, 255)
+            remainingSeconds = remainingSeconds - 1
+        else
+            timeLabel.Text = "READY!"
+            timeLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+            requestTime()
+        end
+    end
+    
+    mainFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton2 then
+            manualSetTime()
+        elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+            requestTime()
+        end
+    end)
+    
+    task.spawn(function()
+        while mainFrame and mainFrame.Parent do
+            task.wait(30)
+            requestTime()
+        end
+    end)
+    
+    task.spawn(function()
+        while mainFrame and mainFrame.Parent do
+            updateTime()
+            task.wait(1)
+        end
+    end)
+    
+    return mainFrame
+end
+
+-- ==================== ОСНОВНОЕ МЕНЮ ====================
+local gui = Instance.new("ScreenGui")
+gui.Name = "RageMenu"
+gui.Parent = game:GetService("CoreGui")
+gui.ResetOnSpawn = false
+
+-- Запускаем Slot Timer
+setupSlotTimer(gui)
+
+local main = Instance.new("Frame")
+main.Size = UDim2.new(0, 450, 0, 520)
+main.Position = UDim2.new(0.5, -225, 0.5, -260)
+main.BackgroundColor3 = Color3.fromRGB(8, 6, 18)
+main.BorderSizePixel = 0
+main.Visible = true
+main.Parent = gui
+
+local mainCorner = Instance.new("UICorner")
+mainCorner.CornerRadius = UDim.new(0, 16)
+mainCorner.Parent = main
+
+-- Title bar
+local titleBar = Instance.new("Frame")
+titleBar.Size = UDim2.new(1, 0, 0, 50)
+titleBar.Position = UDim2.new(0, 0, 0, 0)
+titleBar.BackgroundColor3 = Color3.fromRGB(45, 35, 90)
+titleBar.BorderSizePixel = 0
+titleBar.Parent = main
+
+local titleCorner = Instance.new("UICorner")
+titleCorner.CornerRadius = UDim.new(0, 16)
+titleCorner.Parent = titleBar
+
+local title = Instance.new("TextLabel")
+title.Size = UDim2.new(1, 0, 1, 0)
+title.BackgroundTransparency = 1
+title.Text = "🔥 RAGE PANEL 🔥"
+title.TextColor3 = Color3.fromRGB(255, 255, 255)
+title.Font = Enum.Font.GothamBold
+title.TextSize = 20
+title.TextXAlignment = Enum.TextXAlignment.Center
+title.Parent = titleBar
+
+-- Dragging
+local dragging = false
+local dragStart, startPos
+
+titleBar.InputBegan:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = true
+        dragStart = input.Position
+        startPos = main.Position
+    end
+end)
+
+UIS.InputEnded:Connect(function(input)
+    if input.UserInputType == Enum.UserInputType.MouseButton1 then
+        dragging = false
+    end
+end)
+
+UIS.InputChanged:Connect(function(input)
+    if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+        local delta = input.Position - dragStart
+        main.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+    end
+end)
+
+-- Tab buttons
+local tabFrame = Instance.new("Frame")
+tabFrame.Size = UDim2.new(1, 0, 0, 45)
+tabFrame.Position = UDim2.new(0, 0, 0, 50)
+tabFrame.BackgroundColor3 = Color3.fromRGB(20, 16, 40)
+tabFrame.BorderSizePixel = 0
+tabFrame.Visible = false
+tabFrame.Parent = main
+
+local legitTab = Instance.new("TextButton")
+legitTab.Size = UDim2.new(0.333, 0, 1, 0)
+legitTab.Position = UDim2.new(0, 0, 0, 0)
+legitTab.BackgroundColor3 = Color3.fromRGB(30, 24, 55)
+legitTab.Text = "⚡ LEGIT"
+legitTab.TextColor3 = Color3.fromRGB(200, 200, 230)
+legitTab.Font = Enum.Font.GothamBold
+legitTab.TextSize = 12
+legitTab.BorderSizePixel = 0
+legitTab.Parent = tabFrame
+
+local visualTab = Instance.new("TextButton")
+visualTab.Size = UDim2.new(0.333, 0, 1, 0)
+visualTab.Position = UDim2.new(0.333, 0, 0, 0)
+visualTab.BackgroundColor3 = Color3.fromRGB(30, 24, 55)
+visualTab.Text = "👁️ VISUAL"
+visualTab.TextColor3 = Color3.fromRGB(200, 200, 230)
+visualTab.Font = Enum.Font.GothamBold
+visualTab.TextSize = 12
+visualTab.BorderSizePixel = 0
+visualTab.Parent = tabFrame
+
+local rageTab = Instance.new("TextButton")
+rageTab.Size = UDim2.new(0.334, 0, 1, 0)
+rageTab.Position = UDim2.new(0.666, 0, 0, 0)
+rageTab.BackgroundColor3 = Color3.fromRGB(30, 24, 55)
+rageTab.Text = "💀 RAGE"
+rageTab.TextColor3 = Color3.fromRGB(200, 200, 230)
+rageTab.Font = Enum.Font.GothamBold
+rageTab.TextSize = 12
+rageTab.BorderSizePixel = 0
+rageTab.Parent = tabFrame
+
+-- Content frames
+local legitContent = Instance.new("Frame")
+legitContent.Size = UDim2.new(1, 0, 1, -95)
+legitContent.Position = UDim2.new(0, 0, 0, 95)
+legitContent.BackgroundTransparency = 1
+legitContent.Visible = false
+legitContent.Parent = main
+
+local visualContent = Instance.new("Frame")
+visualContent.Size = UDim2.new(1, 0, 1, -95)
+visualContent.Position = UDim2.new(0, 0, 0, 95)
+visualContent.BackgroundTransparency = 1
+visualContent.Visible = false
+visualContent.Parent = main
+
+local rageContent = Instance.new("Frame")
+rageContent.Size = UDim2.new(1, 0, 1, -95)
+rageContent.Position = UDim2.new(0, 0, 0, 95)
+rageContent.BackgroundTransparency = 1
+rageContent.Visible = false
+rageContent.Parent = main
+
+-- LEGIT buttons
+local frBtn = Instance.new("TextButton")
+frBtn.Size = UDim2.new(0.85, 0, 0, 45)
+frBtn.Position = UDim2.new(0.075, 0, 0.1, 0)
+frBtn.BackgroundColor3 = Color3.fromRGB(25, 20, 48)
+frBtn.Text = "🔗 FURTHER REACH: OFF"
+frBtn.TextColor3 = Color3.fromRGB(220, 220, 255)
+frBtn.Font = Enum.Font.GothamBold
+frBtn.TextSize = 13
+frBtn.BorderSizePixel = 0
+frBtn.Parent = legitContent
+
+local frCorner = Instance.new("UICorner")
+frCorner.CornerRadius = UDim.new(0, 10)
+frCorner.Parent = frBtn
+
+-- Auto Aim с выбором клавиши
+local aimKey = "Q"
+local aimKeyCode = Enum.KeyCode.Q
+local aimActive = false
+local aimConn = nil
+
+local aimBtn = Instance.new("TextButton")
+aimBtn.Size = UDim2.new(0.85, 0, 0, 45)
+aimBtn.Position = UDim2.new(0.075, 0, 0.3, 0)
+aimBtn.BackgroundColor3 = Color3.fromRGB(25, 20, 48)
+aimBtn.Text = "🎯 AUTO AIM: OFF (" .. aimKey .. ")"
+aimBtn.TextColor3 = Color3.fromRGB(220, 220, 255)
+aimBtn.Font = Enum.Font.GothamBold
+aimBtn.TextSize = 13
+aimBtn.BorderSizePixel = 0
+aimBtn.Parent = legitContent
+
+local aimCorner = Instance.new("UICorner")
+aimCorner.CornerRadius = UDim.new(0, 10)
+aimCorner.Parent = aimBtn
+
+-- Кнопка смены клавиши
+local keybindBtn = Instance.new("TextButton")
+keybindBtn.Size = UDim2.new(0.4, 0, 0, 30)
+keybindBtn.Position = UDim2.new(0.075, 0, 0.45, 0)
+keybindBtn.BackgroundColor3 = Color3.fromRGB(40, 35, 65)
+keybindBtn.Text = "⚙️ SET KEY: " .. aimKey
+keybindBtn.TextColor3 = Color3.fromRGB(220, 220, 255)
+keybindBtn.Font = Enum.Font.GothamBold
+keybindBtn.TextSize = 11
+keybindBtn.BorderSizePixel = 0
+keybindBtn.Parent = legitContent
+
+local keybindCorner = Instance.new("UICorner")
+keybindCorner.CornerRadius = UDim.new(0, 8)
+keybindCorner.Parent = keybindBtn
+
+local waitingForKey = false
+local waitingLabel = Instance.new("TextLabel")
+waitingLabel.Size = UDim2.new(0.4, 0, 0, 30)
+waitingLabel.Position = UDim2.new(0.5, 0, 0.45, 0)
+waitingLabel.BackgroundColor3 = Color3.fromRGB(80, 50, 130)
+waitingLabel.Text = "Press any key..."
+waitingLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+waitingLabel.Font = Enum.Font.GothamBold
+waitingLabel.TextSize = 11
+waitingLabel.TextXAlignment = Enum.TextXAlignment.Center
+waitingLabel.Visible = false
+waitingLabel.BorderSizePixel = 0
+waitingLabel.Parent = legitContent
+
+local waitingCorner = Instance.new("UICorner")
+waitingCorner.CornerRadius = UDim.new(0, 8)
+waitingCorner.Parent = waitingLabel
+
+-- VISUAL buttons
+local espBtn = Instance.new("TextButton")
+espBtn.Size = UDim2.new(0.85, 0, 0, 45)
+espBtn.Position = UDim2.new(0.075, 0, 0.1, 0)
+espBtn.BackgroundColor3 = Color3.fromRGB(25, 20, 48)
+espBtn.Text = "👁️ ESP: OFF"
+espBtn.TextColor3 = Color3.fromRGB(220, 220, 255)
+espBtn.Font = Enum.Font.GothamBold
+espBtn.TextSize = 13
+espBtn.BorderSizePixel = 0
+espBtn.Parent = visualContent
+
+local espCorner = Instance.new("UICorner")
+espCorner.CornerRadius = UDim.new(0, 10)
+espCorner.Parent = espBtn
+
+local playerListBtn = Instance.new("TextButton")
+playerListBtn.Size = UDim2.new(0.85, 0, 0, 45)
+playerListBtn.Position = UDim2.new(0.075, 0, 0.3, 0)
+playerListBtn.BackgroundColor3 = Color3.fromRGB(25, 20, 48)
+playerListBtn.Text = "👥 PLAYER LIST"
+playerListBtn.TextColor3 = Color3.fromRGB(220, 220, 255)
+playerListBtn.Font = Enum.Font.GothamBold
+playerListBtn.TextSize = 13
+playerListBtn.BorderSizePixel = 0
+playerListBtn.Parent = visualContent
+
+local playerListCorner = Instance.new("UICorner")
+playerListCorner.CornerRadius = UDim.new(0, 10)
+playerListCorner.Parent = playerListBtn
+
+-- Day/Night buttons
+local dayBtn = Instance.new("TextButton")
+dayBtn.Size = UDim2.new(0.35, 0, 0, 40)
+dayBtn.Position = UDim2.new(0.1, 0, 0.55, 0)
+dayBtn.BackgroundColor3 = Color3.fromRGB(255, 200, 100)
+dayBtn.Text = "☀️ DAY"
+dayBtn.TextColor3 = Color3.fromRGB(0, 0, 0)
+dayBtn.Font = Enum.Font.GothamBold
+dayBtn.TextSize = 14
+dayBtn.BorderSizePixel = 0
+dayBtn.Parent = visualContent
+
+local dayCorner = Instance.new("UICorner")
+dayCorner.CornerRadius = UDim.new(0, 8)
+dayCorner.Parent = dayBtn
+
+local nightBtn = Instance.new("TextButton")
+nightBtn.Size = UDim2.new(0.35, 0, 0, 40)
+nightBtn.Position = UDim2.new(0.55, 0, 0.55, 0)
+nightBtn.BackgroundColor3 = Color3.fromRGB(50, 50, 80)
+nightBtn.Text = "🌙 NIGHT"
+nightBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+nightBtn.Font = Enum.Font.GothamBold
+nightBtn.TextSize = 14
+nightBtn.BorderSizePixel = 0
+nightBtn.Parent = visualContent
+
+local nightCorner = Instance.new("UICorner")
+nightCorner.CornerRadius = UDim.new(0, 8)
+nightCorner.Parent = nightBtn
+
+-- Day/Night functions
+dayBtn.MouseButton1Click:Connect(function()
+    TweenService:Create(Lighting, TweenInfo.new(1, Enum.EasingStyle.Quad), {
+        ClockTime = 14,
+        Brightness = 2,
+        OutdoorAmbient = Color3.fromRGB(150, 160, 200)
+    }):Play()
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "VISUAL",
+        Text = "Day mode activated",
+        Duration = 2
+    })
+end)
+
+nightBtn.MouseButton1Click:Connect(function()
+    TweenService:Create(Lighting, TweenInfo.new(1, Enum.EasingStyle.Quad), {
+        ClockTime = 0,
+        Brightness = 0.3,
+        OutdoorAmbient = Color3.fromRGB(30, 30, 50)
+    }):Play()
+    game:GetService("StarterGui"):SetCore("SendNotification", {
+        Title = "VISUAL",
+        Text = "Night mode activated",
+        Duration = 2
+    })
+end)
+
+-- RAGE variables
+local strengthActive = false
+local strengthConnection = nil
+local strengthValue = 400
+
+-- RAGE buttons
+local strengthBtn = Instance.new("TextButton")
+strengthBtn.Size = UDim2.new(0.55, 0, 0, 40)
+strengthBtn.Position = UDim2.new(0.075, 0, 0.15, 0)
+strengthBtn.BackgroundColor3 = Color3.fromRGB(25, 20, 48)
+strengthBtn.Text = "💪 STRENGTH POWER: OFF"
+strengthBtn.TextColor3 = Color3.fromRGB(220, 220, 255)
+strengthBtn.Font = Enum.Font.GothamBold
+strengthBtn.TextSize = 12
+strengthBtn.BorderSizePixel = 0
+strengthBtn.Parent = rageContent
+
+local strengthCorner = Instance.new("UICorner")
+strengthCorner.CornerRadius = UDim.new(0, 8)
+strengthCorner.Parent = strengthBtn
+
+-- Value input box
+local valueBox = Instance.new("TextBox")
+valueBox.Size = UDim2.new(0.2, 0, 0, 40)
+valueBox.Position = UDim2.new(0.65, 0, 0.15, 0)
+valueBox.BackgroundColor3 = Color3.fromRGB(40, 35, 65)
+valueBox.Text = "400"
+valueBox.TextColor3 = Color3.fromRGB(255, 255, 255)
+valueBox.Font = Enum.Font.GothamBold
+valueBox.TextSize = 14
+valueBox.TextXAlignment = Enum.TextXAlignment.Center
+valueBox.BorderSizePixel = 0
+valueBox.PlaceholderText = "100-10000"
+valueBox.Parent = rageContent
+
+local valueCorner = Instance.new("UICorner")
+valueCorner.CornerRadius = UDim.new(0, 8)
+valueCorner.Parent = valueBox
+
+local valueLabel = Instance.new("TextLabel")
+valueLabel.Size = UDim2.new(0.1, 0, 0, 20)
+valueLabel.Position = UDim2.new(0.87, 0, 0.2, 0)
+valueLabel.BackgroundTransparency = 1
+valueLabel.Text = "⚡"
+valueLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
+valueLabel.Font = Enum.Font.GothamBold
+valueLabel.TextSize = 16
+valueLabel.Parent = rageContent
+
+-- Value input handler
+valueBox.FocusLost:Connect(function(enterPressed)
+    if enterPressed then
+        local num = tonumber(valueBox.Text)
+        if num and num >= 100 and num <= 10000 then
+            strengthValue = num
+            valueBox.Text = tostring(strengthValue)
+            game:GetService("StarterGui"):SetCore("SendNotification", {
+                Title = "RAGE",
+                Text = "Strength set to " .. strengthValue,
+                Duration = 2
+            })
+        else
+            valueBox.Text = tostring(strengthValue)
+            game:GetService("StarterGui"):SetCore("SendNotification", {
+                Title = "RAGE",
+                Text = "Invalid value! Use 100-10000",
+                Duration = 2
+            })
+        end
+    end
+end)
+
+-- Strength Power function
+strengthBtn.MouseButton1Click:Connect(function()
+    strengthActive = not strengthActive
+    if strengthActive then
+        strengthBtn.Text = "💪 STRENGTH POWER: ON"
+        strengthBtn.BackgroundColor3 = Color3.fromRGB(140, 45, 75)
+        strengthConnection = workspace.ChildAdded:Connect(function(model)
+            if model.Name == "GrabParts" then
+                local partToImpulse = model.GrabPart and model.GrabPart:FindFirstChild("WeldConstraint") and model.GrabPart.WeldConstraint.Part1
+                if partToImpulse then
+                    local velocityObj = Instance.new("BodyVelocity", partToImpulse)
+                    model:GetPropertyChangedSignal("Parent"):Connect(function()
+                        if not model.Parent then
+                            if UserInputService:GetLastInputType() == Enum.UserInputType.MouseButton2 then
+                                velocityObj.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+                                velocityObj.Velocity = workspace.CurrentCamera.CFrame.LookVector * strengthValue
+                                game:GetService("Debris"):AddItem(velocityObj, 1)
+                            else
+                                velocityObj:Destroy()
+                            end
+                        end
+                    end)
+                end
+            end
+        end)
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "RAGE",
+            Text = "Strength Power activated | Strength: " .. strengthValue,
+            Duration = 2
+        })
+    else
+        strengthBtn.Text = "💪 STRENGTH POWER: OFF"
+        strengthBtn.BackgroundColor3 = Color3.fromRGB(25, 20, 48)
+        if strengthConnection then
+            strengthConnection:Disconnect()
+            strengthConnection = nil
+        end
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "RAGE",
+            Text = "Strength Power deactivated",
+            Duration = 2
+        })
+    end
+end)
+
+-- Confirmation window for RAGE tab
+local confirmWindow = nil
+local confirmVisible = false
+
+local function setActiveTab(active)
+    legitContent.Visible = false
+    visualContent.Visible = false
+    rageContent.Visible = false
+    
+    legitTab.BackgroundColor3 = Color3.fromRGB(30, 24, 55)
+    visualTab.BackgroundColor3 = Color3.fromRGB(30, 24, 55)
+    rageTab.BackgroundColor3 = Color3.fromRGB(30, 24, 55)
+    
+    if active == "legit" then
+        legitContent.Visible = true
+        legitTab.BackgroundColor3 = Color3.fromRGB(100, 70, 150)
+    elseif active == "visual" then
+        visualContent.Visible = true
+        visualTab.BackgroundColor3 = Color3.fromRGB(100, 70, 150)
+    elseif active == "rage" then
+        rageContent.Visible = true
+        rageTab.BackgroundColor3 = Color3.fromRGB(100, 70, 150)
+    end
+end
+
+local function createConfirmWindow()
+    if confirmWindow then confirmWindow:Destroy() end
+    
+    confirmWindow = Instance.new("Frame")
+    confirmWindow.Size = UDim2.new(0, 320, 0, 160)
+    confirmWindow.Position = UDim2.new(0.5, -160, 0.5, -80)
+    confirmWindow.BackgroundColor3 = Color3.fromRGB(20, 15, 40)
+    confirmWindow.BorderSizePixel = 0
+    confirmWindow.Visible = true
+    confirmWindow.Parent = gui
+    
+    local confirmCorner = Instance.new("UICorner")
+    confirmCorner.CornerRadius = UDim.new(0, 12)
+    confirmCorner.Parent = confirmWindow
+    
+    local confirmStroke = Instance.new("UIStroke")
+    confirmStroke.Color = Color3.fromRGB(200, 60, 60)
+    confirmStroke.Thickness = 2
+    confirmStroke.Parent = confirmWindow
+    
+    local confirmText = Instance.new("TextLabel")
+    confirmText.Size = UDim2.new(1, 0, 0, 60)
+    confirmText.Position = UDim2.new(0, 0, 0, 20)
+    confirmText.BackgroundTransparency = 1
+    confirmText.Text = "⚠️ Are you sure to use RAGE?\nIt can BAN your account!"
+    confirmText.TextColor3 = Color3.fromRGB(255, 150, 150)
+    confirmText.Font = Enum.Font.GothamBold
+    confirmText.TextSize = 14
+    confirmText.TextXAlignment = Enum.TextXAlignment.Center
+    confirmText.TextYAlignment = Enum.TextYAlignment.Center
+    confirmText.Parent = confirmWindow
+    
+    local yesBtn = Instance.new("TextButton")
+    yesBtn.Size = UDim2.new(0.4, 0, 0, 35)
+    yesBtn.Position = UDim2.new(0.05, 0, 0.75, 0)
+    yesBtn.BackgroundColor3 = Color3.fromRGB(200, 60, 60)
+    yesBtn.Text = "YES"
+    yesBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    yesBtn.Font = Enum.Font.GothamBold
+    yesBtn.TextSize = 14
+    yesBtn.BorderSizePixel = 0
+    yesBtn.Parent = confirmWindow
+    
+    local yesCorner = Instance.new("UICorner")
+    yesCorner.CornerRadius = UDim.new(0, 8)
+    yesCorner.Parent = yesBtn
+    
+    local noBtn = Instance.new("TextButton")
+    noBtn.Size = UDim2.new(0.4, 0, 0, 35)
+    noBtn.Position = UDim2.new(0.55, 0, 0.75, 0)
+    noBtn.BackgroundColor3 = Color3.fromRGB(80, 80, 120)
+    noBtn.Text = "NO"
+    noBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+    noBtn.Font = Enum.Font.GothamBold
+    noBtn.TextSize = 14
+    noBtn.BorderSizePixel = 0
+    noBtn.Parent = confirmWindow
+    
+    local noCorner = Instance.new("UICorner")
+    noCorner.CornerRadius = UDim.new(0, 8)
+    noCorner.Parent = noBtn
+    
+    yesBtn.MouseButton1Click:Connect(function()
+        confirmWindow:Destroy()
+        confirmVisible = false
+        setActiveTab("rage")
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "RAGE MODE",
+            Text = "Activated! Use at your own risk!",
+            Duration = 3
+        })
+    end)
+    
+    noBtn.MouseButton1Click:Connect(function()
+        confirmWindow:Destroy()
+        confirmVisible = false
+        setActiveTab("legit")
+        game:GetService("StarterGui"):SetCore("SendNotification", {
+            Title = "RAGE MODE",
+            Text = "Cancelled",
+            Duration = 2
+        })
+    end)
+end
+
+legitTab.MouseButton1Click:Connect(function() setActiveTab("legit") end)
+visualTab.MouseButton1Click:Connect(function() setActiveTab("visual") end)
+
+rageTab.MouseButton1Click:Connect(function()
+    if confirmVisible then return end
+    confirmVisible = true
+    createConfirmWindow()
+end)
+
+-- Welcome screen
+local welcomeScreen = Instance.new("Frame")
+welcomeScreen.Size = UDim2.new(1, 0, 1, 0)
+welcomeScreen.Position = UDim2.new(0, 0, 0, 0)
+welcomeScreen.BackgroundColor3 = Color3.fromRGB(12, 10, 25)
+welcomeScreen.BorderSizePixel = 0
+welcomeScreen.Visible = true
+welcomeScreen.Parent = main
+
+local welcomeCorner = Instance.new("UICorner")
+welcomeCorner.CornerRadius = UDim.new(0, 16)
+welcomeCorner.Parent = welcomeScreen
+
+local welcomeText = Instance.new("TextLabel")
+welcomeText.Size = UDim2.new(1, 0, 1, 0)
+welcomeText.BackgroundTransparency = 1
+welcomeText.Text = "Hi you use my script :)\n\nMy contact:\nDiscord: xxx82\nTelegram: Hemera14\n\nPlace: Fling Things and People"
+welcomeText.TextColor3 = Color3.fromRGB(220, 200, 255)
+welcomeText.Font = Enum.Font.GothamBold
+welcomeText.TextSize = 16
+welcomeText.TextXAlignment = Enum.TextXAlignment.Center
+welcomeText.TextYAlignment = Enum.TextYAlignment.Center
+welcomeText.Parent = welcomeScreen
+
+local enterBtn = Instance.new("TextButton")
+enterBtn.Size = UDim2.new(0, 140, 0, 40)
+enterBtn.Position = UDim2.new(0.5, -70, 0.85, 0)
+enterBtn.BackgroundColor3 = Color3.fromRGB(80, 50, 130)
+enterBtn.Text = "ENTER →"
+enterBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+enterBtn.Font = Enum.Font.GothamBold
+enterBtn.TextSize = 16
+enterBtn.BorderSizePixel = 0
+enterBtn.Parent = welcomeScreen
+
+local enterCorner = Instance.new("UICorner")
+enterCorner.CornerRadius = UDim.new(0, 10)
+enterCorner.Parent = enterBtn
+
+enterBtn.MouseButton1Click:Connect(function()
+    welcomeScreen.Visible = false
+    tabFrame.Visible = true
+    setActiveTab("legit")
+end)
+
+-- Unload button
+local unloadBtn = Instance.new("TextButton")
+unloadBtn.Size = UDim2.new(0, 70, 0, 30)
+unloadBtn.Position = UDim2.new(1, -80, 1, -38)
+unloadBtn.BackgroundColor3 = Color3.fromRGB(100, 60, 130)
+unloadBtn.Text = "UNLOAD"
+unloadBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+unloadBtn.Font = Enum.Font.GothamBold
+unloadBtn.TextSize = 12
+unloadBtn.BorderSizePixel = 0
+unloadBtn.Parent = main
+
+local unloadCorner = Instance.new("UICorner")
+unloadCorner.CornerRadius = UDim.new(0, 8)
+unloadCorner.Parent = unloadBtn
+
+-- Player List Window
+local playerWindow = nil
+local targetList = {}
+local friendList = {}
+
+local function isPlayerTargeted(plr)
+    for _, targeted in pairs(targetList) do
+        if targeted == plr then return true end
+    end
+    return false
+end
+
+local function isPlayerFriend(plr)
+    for _, friend in pairs(friendList) do
+        if friend == plr then return true end
+    end
+    return false
+end
+
+local function removeFromTarget(plr)
+    for i, targeted in pairs(targetList) do
+        if targeted == plr then
+            table.remove(targetList, i)
+            break
+        end
+    end
+end
+
+local function removeFromFriend(plr)
+    for i, friend in pairs(friendList) do
+        if friend == plr then
+            table.remove(friendList, i)
+            break
+        end
+    end
+end
+
+local function addToTarget(plr)
+    removeFromFriend(plr)
+    if not isPlayerTargeted(plr) then
+        table.insert(targetList, plr)
+    end
+end
+
+local function addToFriend(plr)
+    removeFromTarget(plr)
+    if not isPlayerFriend(plr) then
+        table.insert(friendList, plr)
+    end
+end
+
+local function createPlayerWindow()
+    if playerWindow then playerWindow:Destroy() end
+    
+    playerWindow = Instance.new("Frame")
+    playerWindow.Size = UDim2.new(0, 320, 0, 420)
+    playerWindow.Position = UDim2.new(0.5, -160, 0.5, -210)
+    playerWindow.BackgroundColor3 = Color3.fromRGB(15, 12, 30)
+    playerWindow.BorderSizePixel = 0
+    playerWindow.Visible = false
+    playerWindow.Parent = gui
+    
+    local winCorner = Instance.new("UICorner")
+    winCorner.CornerRadius = UDim.new(0, 14)
+    winCorner.Parent = playerWindow
+    
+    local winDragging = false
+    local winDragStart, winStartPos
+    
+    local winTitle = Instance.new("Frame")
+    winTitle.Size = UDim2.new(1, 0, 0, 45)
+    winTitle.BackgroundColor3 = Color3.fromRGB(45, 35, 90)
+    winTitle.BorderSizePixel = 0
+    winTitle.Parent = playerWindow
+    
+    local winTitleCorner = Instance.new("UICorner")
+    winTitleCorner.CornerRadius = UDim.new(0, 14)
+    winTitleCorner.Parent = winTitle
+    
+    local winTitleText = Instance.new("TextLabel")
+    winTitleText.Size = UDim2.new(1, 0, 0.6, 0)
+    winTitleText.Position = UDim2.new(0, 0, 0, 0)
+    winTitleText.BackgroundTransparency = 1
+    winTitleText.Text = "👥 PLAYER LIST"
+    winTitleText.TextColor3 = Color3.fromRGB(255, 255, 255)
+    winTitleText.Font = Enum.Font.GothamBold
+    winTitleText.TextSize = 15
+    winTitleText.Parent = winTitle
+    
+    local winHint = Instance.new("TextLabel")
+    winHint.Size = UDim2.new(1, 0, 0.4, 0)
+    winHint.Position = UDim2.new(0, 0, 0.6, 0)
+    winHint.BackgroundTransparency = 1
+    winHint.Text = "🔴 ЛКМ = ВРАГ | 💚 ПКМ = ДРУГ"
+    winHint.TextColor3 = Color3.fromRGB(180, 160, 220)
+    winHint.Font = Enum.Font.Gotham
+    winHint.TextSize = 10
+    winHint.Parent = winTitle
+    
+    local winClose = Instance.new("TextButton")
+    winClose.Size = UDim2.new(0, 30, 0, 30)
+    winClose.Position = UDim2.new(1, -38, 0, 7)
+    winClose.BackgroundColor3 = Color3.fromRGB(180, 40, 40)
+    winClose.Text = "X"
+    winClose.TextColor3 = Color3.fromRGB(255, 255, 255)
+    winClose.Font = Enum.Font.GothamBold
+    winClose.TextSize = 16
+    winClose.BorderSizePixel = 0
+    winClose.Parent = winTitle
+    
+    local winCloseCorner = Instance.new("UICorner")
+    winCloseCorner.CornerRadius = UDim.new(0, 7)
+    winCloseCorner.Parent = winClose
+    
+    winTitle.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            winDragging = true
+            winDragStart = input.Position
+            winStartPos = playerWindow.Position
+        end
+    end)
+    
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            winDragging = false
+        end
+    end)
+    
+    UIS.InputChanged:Connect(function(input)
+        if winDragging and input.UserInputType == Enum.UserInputType.MouseMovement and playerWindow and playerWindow.Visible then
+            local delta = input.Position - winDragStart
+            playerWindow.Position = UDim2.new(winStartPos.X.Scale, winStartPos.X.Offset + delta.X, winStartPos.Y.Scale, winStartPos.Y.Offset + delta.Y)
+        end
+    end)
+    
+    local scroll = Instance.new("ScrollingFrame")
+    scroll.Size = UDim2.new(1, 0, 1, -45)
+    scroll.Position = UDim2.new(0, 0, 0, 45)
+    scroll.BackgroundTransparency = 1
+    scroll.BorderSizePixel = 0
+    scroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+    scroll.ScrollBarThickness = 5
+    scroll.Parent = playerWindow
+    
+    local listLayout = Instance.new("UIListLayout")
+    listLayout.Padding = UDim.new(0, 6)
+    listLayout.Parent = scroll
+    
+    winClose.MouseButton1Click:Connect(function()
+        playerWindow.Visible = false
+    end)
+    
+    return scroll, listLayout
+end
+
+local function updatePlayerList()
+    if not playerWindow then return end
+    local scroll = playerWindow:FindFirstChildWhichIsA("ScrollingFrame")
+    if not scroll then return end
+    
+    for _, child in pairs(scroll:GetChildren()) do
+        if child:IsA("TextButton") then
+            child:Destroy()
+        end
+    end
+    
+    local yOffset = 0
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer then
+            local playerBtn = Instance.new("TextButton")
+            playerBtn.Size = UDim2.new(0.9, 0, 0, 42)
+            playerBtn.Position = UDim2.new(0.05, 0, 0, yOffset)
+            playerBtn.BackgroundColor3 = Color3.fromRGB(25, 20, 50)
+            playerBtn.TextColor3 = Color3.fromRGB(220, 220, 255)
+            playerBtn.Font = Enum.Font.GothamBold
+            playerBtn.TextSize = 13
+            playerBtn.BorderSizePixel = 0
+            playerBtn.Parent = scroll
+            
+            local btnCorner = Instance.new("UICorner")
+            btnCorner.CornerRadius = UDim.new(0, 8)
+            btnCorner.Parent = playerBtn
+            
+            if isPlayerTargeted(plr) then
+                playerBtn.BackgroundColor3 = Color3.fromRGB(180, 50, 70)
+                playerBtn.Text = "🔴 " .. plr.Name .. " (ВРАГ)"
+            elseif isPlayerFriend(plr) then
+                playerBtn.BackgroundColor3 = Color3.fromRGB(50, 150, 70)
+                playerBtn.Text = "💚 " .. plr.Name .. " (ДРУГ)"
+            else
+                playerBtn.BackgroundColor3 = Color3.fromRGB(25, 20, 50)
+                playerBtn.Text = "⚪ " .. plr.Name
+            end
+            
+            playerBtn.MouseButton1Click:Connect(function()
+                if isPlayerTargeted(plr) then
+                    removeFromTarget(plr)
+                else
+                    addToTarget(plr)
+                end
+                updatePlayerList()
+                if espActive then updateESP() end
+            end)
+            
+            playerBtn.MouseButton2Click:Connect(function()
+                if isPlayerFriend(plr) then
+                    removeFromFriend(plr)
+                else
+                    addToFriend(plr)
+                end
+                updatePlayerList()
+                if espActive then updateESP() end
+            end)
+            
+            yOffset = yOffset + 48
+        end
+    end
+    
+    scroll.CanvasSize = UDim2.new(0, 0, 0, yOffset)
+end
+
+local function onPlayerAdded(player)
+    updatePlayerList()
+end
+
+local function onPlayerRemoving(player)
+    removeFromTarget(player)
+    removeFromFriend(player)
+    updatePlayerList()
+    if espActive then updateESP() end
+end
+
+Players.PlayerAdded:Connect(onPlayerAdded)
+Players.PlayerRemoving:Connect(onPlayerRemoving)
+
+playerListBtn.MouseButton1Click:Connect(function()
+    if not playerWindow then
+        createPlayerWindow()
+    end
+    updatePlayerList()
+    playerWindow.Visible = true
+end)
+
+-- Further Reach variables
+local frActive = false
+local espActive = false
+local espFolder = nil
+local renderConn = nil
+local diedHandle = nil
+
+-- Further Reach Functions
+local ScriptNotify = ReplicatedStorage.GamepassEvents.FurtherReachBoughtNotifier
+local Activator = ReplicatedStorage.MenuToys.LimitedTimeToyEvent
+
+local function ReloadScript()
+    if LocalPlayer.Character then
+        local grab = LocalPlayer.Character:FindFirstChild("GrabbingScript")
+        if grab then
+            grab.Enabled = false
+            grab.Enabled = true
+        end
+    end
+end
+
+local function disableFR()
+    local val = LocalPlayer:FindFirstChild("FartherReach")
+    if val then val:Destroy() end
+    pcall(function()
+        hookinstance(ScriptNotify, ScriptNotify)
+    end)
+    ReloadScript()
+end
+
+local function enableFR()
+    local val = LocalPlayer:FindFirstChild("FartherReach")
+    if val then val:Destroy() end
+    
+    local newVal = Instance.new("BoolValue")
+    newVal.Name = "FartherReach"
+    newVal.Value = true
+    newVal.Parent = LocalPlayer
+    
+    pcall(function()
+        hookinstance(ScriptNotify, Activator)
+    end)
+    ReloadScript()
+    
+    task.delay(0.1, function()
+        pcall(function()
+            Activator:FireServer()
+        end)
+    end)
+end
+
+local function reapplyFR()
+    if frActive then
+        pcall(function()
+            local val = LocalPlayer:FindFirstChild("FartherReach")
+            if not val or not val.Value then
+                enableFR()
+            else
+                hookinstance(ScriptNotify, Activator)
+                Activator:FireServer()
+                ReloadScript()
+            end
+        end)
+    end
+end
+
+local function onCharacterAdded(character)
+    character:WaitForChild("GrabbingScript", 5)
+    task.wait(0.5)
+    reapplyFR()
+end
+
+frBtn.MouseButton1Click:Connect(function()
+    frActive = not frActive
+    if frActive then
+        frBtn.Text = "🔗 FURTHER REACH: ON"
+        frBtn.BackgroundColor3 = Color3.fromRGB(140, 45, 75)
+        enableFR()
+        if diedHandle then diedHandle:Disconnect() end
+        diedHandle = LocalPlayer.CharacterAdded:Connect(onCharacterAdded)
+    else
+        frBtn.Text = "🔗 FURTHER REACH: OFF"
+        frBtn.BackgroundColor3 = Color3.fromRGB(25, 20, 48)
+        disableFR()
+        if diedHandle then
+            diedHandle:Disconnect()
+            diedHandle = nil
+        end
+    end
+end)
+
+-- Auto Aim functions
+local function getClosestNonFriend()
+    local closest = nil
+    local shortest = math.huge
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            if not isPlayerFriend(plr) then
+                local dist = (plr.Character.HumanoidRootPart.Position - (LocalPlayer.Character and LocalPlayer.Character:FindFirstChild("HumanoidRootPart") and LocalPlayer.Character.HumanoidRootPart.Position or Vector3.new())).magnitude
+                if dist < shortest then
+                    closest = plr
+                    shortest = dist
+                end
+            end
+        end
+    end
+    return closest
+end
+
+local function setupAutoAim()
+    if aimConn then aimConn:Disconnect() end
+    if aimActive then
+        aimConn = UIS.InputBegan:Connect(function(input, processed)
+            if aimActive and input.KeyCode == aimKeyCode and not processed then
+                local target = getClosestNonFriend()
+                if target and target.Character and target.Character:FindFirstChild("HumanoidRootPart") then
+                    Camera.CFrame = CFrame.new(Camera.CFrame.Position, target.Character.HumanoidRootPart.Position)
+                    mouse1click()
+                end
+            end
+        end)
+    end
+end
+
+-- Keybind changer
+keybindBtn.MouseButton1Click:Connect(function()
+    waitingForKey = true
+    keybindBtn.Visible = false
+    waitingLabel.Visible = true
+    
+    local inputConn
+    inputConn = UIS.InputBegan:Connect(function(input, processed)
+        if waitingForKey and not processed then
+            local key = input.KeyCode
+            if key ~= Enum.KeyCode.Unknown then
+                aimKeyCode = key
+                aimKey = key.Name
+                keybindBtn.Text = "⚙️ SET KEY: " .. aimKey
+                aimBtn.Text = "🎯 AUTO AIM: OFF (" .. aimKey .. ")"
+                if aimActive then
+                    setupAutoAim()
+                end
+                waitingForKey = false
+                keybindBtn.Visible = true
+                waitingLabel.Visible = false
+                inputConn:Disconnect()
+                game:GetService("StarterGui"):SetCore("SendNotification", {
+                    Title = "KEYBIND",
+                    Text = "Auto Aim key set to: " .. aimKey,
+                    Duration = 2
+                })
+            end
+        end
+    end)
+end)
+
+aimBtn.MouseButton1Click:Connect(function()
+    aimActive = not aimActive
+    if aimActive then
+        aimBtn.Text = "🎯 AUTO AIM: ON (" .. aimKey .. ")"
+        aimBtn.BackgroundColor3 = Color3.fromRGB(140, 45, 75)
+        setupAutoAim()
+    else
+        aimBtn.Text = "🎯 AUTO AIM: OFF (" .. aimKey .. ")"
+        aimBtn.BackgroundColor3 = Color3.fromRGB(25, 20, 48)
+        if aimConn then
+            aimConn:Disconnect()
+            aimConn = nil
+        end
+    end
+end)
+
+-- ESP Functions
+local function destroyESP()
+    if espFolder then espFolder:Destroy() end
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            local esp = plr.Character.HumanoidRootPart:FindFirstChild(plr.Name .. "_ESP")
+            if esp then esp:Destroy() end
+        end
+    end
+end
+
+local function createESP()
+    destroyESP()
+    espFolder = Instance.new("Folder")
+    espFolder.Name = "ESP_Folder"
+    espFolder.Parent = game:GetService("CoreGui")
+    
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            local bill = Instance.new("BillboardGui")
+            bill.Name = plr.Name .. "_ESP"
+            bill.Size = UDim2.new(0, 130, 0, 32)
+            bill.StudsOffset = Vector3.new(0, 2.2, 0)
+            bill.AlwaysOnTop = true
+            bill.Parent = plr.Character.HumanoidRootPart
+            
+            local nameLabel = Instance.new("TextLabel")
+            nameLabel.Size = UDim2.new(1, 0, 1, 0)
+            nameLabel.BackgroundTransparency = 1
+            nameLabel.Text = plr.Name
+            nameLabel.Font = Enum.Font.GothamBold
+            nameLabel.TextSize = 13
+            nameLabel.TextStrokeTransparency = 0.3
+            
+            if isPlayerTargeted(plr) then
+                nameLabel.TextColor3 = Color3.fromRGB(255, 60, 60)
+                nameLabel.TextSize = 15
+            elseif isPlayerFriend(plr) then
+                nameLabel.TextColor3 = Color3.fromRGB(60, 255, 60)
+                nameLabel.TextSize = 14
+            else
+                nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+            end
+            
+            nameLabel.Parent = bill
+        end
+    end
+end
+
+local function updateESP()
+    if not espActive then return end
+    for _, plr in pairs(Players:GetPlayers()) do
+        if plr ~= LocalPlayer and plr.Character and plr.Character:FindFirstChild("HumanoidRootPart") then
+            local bill = plr.Character.HumanoidRootPart:FindFirstChild(plr.Name .. "_ESP")
+            if not bill then
+                local newBill = Instance.new("BillboardGui")
+                newBill.Name = plr.Name .. "_ESP"
+                newBill.Size = UDim2.new(0, 130, 0, 32)
+                newBill.StudsOffset = Vector3.new(0, 2.2, 0)
+                newBill.AlwaysOnTop = true
+                newBill.Parent = plr.Character.HumanoidRootPart
+                
+                local nameLabel = Instance.new("TextLabel")
+                nameLabel.Size = UDim2.new(1, 0, 1, 0)
+                nameLabel.BackgroundTransparency = 1
+                nameLabel.Text = plr.Name
+                nameLabel.Font = Enum.Font.GothamBold
+                nameLabel.TextSize = 13
+                nameLabel.TextStrokeTransparency = 0.3
+                
+                if isPlayerTargeted(plr) then
+                    nameLabel.TextColor3 = Color3.fromRGB(255, 60, 60)
+                    nameLabel.TextSize = 15
+                elseif isPlayerFriend(plr) then
+                    nameLabel.TextColor3 = Color3.fromRGB(60, 255, 60)
+                    nameLabel.TextSize = 14
+                else
+                    nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                end
+                
+                nameLabel.Parent = newBill
+            else
+                local nameLabel = bill:FindFirstChildWhichIsA("TextLabel")
+                if nameLabel then
+                    if isPlayerTargeted(plr) then
+                        nameLabel.TextColor3 = Color3.fromRGB(255, 60, 60)
+                        nameLabel.TextSize = 15
+                    elseif isPlayerFriend(plr) then
+                        nameLabel.TextColor3 = Color3.fromRGB(60, 255, 60)
+                        nameLabel.TextSize = 14
+                    else
+                        nameLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+                        nameLabel.TextSize = 13
+                    end
+                end
+            end
+        end
+    end
+end
+
+espBtn.MouseButton1Click:Connect(function()
+    espActive = not espActive
+    if espActive then
+        espBtn.Text = "👁️ ESP: ON"
+        espBtn.BackgroundColor3 = Color3.fromRGB(140, 45, 75)
+        createESP()
+        if renderConn then renderConn:Disconnect() end
+        renderConn = RunService.RenderStepped:Connect(function()
+            if espActive then updateESP() end
+        end)
+    else
+        espBtn.Text = "👁️ ESP: OFF"
+        espBtn.BackgroundColor3 = Color3.fromRGB(25, 20, 48)
+        destroyESP()
+        if renderConn then
+            renderConn:Disconnect()
+            renderConn = nil
+        end
+    end
+end)
+
+-- Full unload
+local function fullUnload()
+    if frActive then
+        disableFR()
+        if diedHandle then diedHandle:Disconnect() end
+    end
+    if aimConn then aimConn:Disconnect() end
+    if renderConn then renderConn:Disconnect() end
+    if strengthConnection then strengthConnection:Disconnect() end
+    destroyESP()
+    if playerWindow then playerWindow:Destroy() end
+    if gui then gui:Destroy() end
+end
+
+unloadBtn.MouseButton1Click:Connect(fullUnload)
+
+-- Initial setup
+createPlayerWindow()
+
+-- Notification
+game:GetService("StarterGui"):SetCore("SendNotification", {
+    Title = "RAGE PANEL",
+    Text = "Loaded | Click ENTER to start | Slot timer on left",
+    Duration = 4
+})
