@@ -18,8 +18,8 @@ local function setupSlotTimer(parentGui)
     
     -- Главное окно (перетаскиваемое)
     local mainFrame = Instance.new("Frame")
-    mainFrame.Size = UDim2.new(0, 200, 0, 85)
-    mainFrame.Position = UDim2.new(0, 10, 0.5, -42)
+    mainFrame.Size = UDim2.new(0, 200, 0, 60)
+    mainFrame.Position = UDim2.new(0, 10, 0.5, -30)
     mainFrame.BackgroundColor3 = Color3.fromRGB(15, 12, 30)
     mainFrame.BackgroundTransparency = 0.1
     mainFrame.BorderSizePixel = 0
@@ -58,8 +58,8 @@ local function setupSlotTimer(parentGui)
     
     -- Время
     local timeLabel = Instance.new("TextLabel")
-    timeLabel.Size = UDim2.new(1, 0, 0, 35)
-    timeLabel.Position = UDim2.new(0, 0, 0, 32)
+    timeLabel.Size = UDim2.new(1, 0, 0, 30)
+    timeLabel.Position = UDim2.new(0, 0, 0, 28)
     timeLabel.BackgroundTransparency = 1
     timeLabel.Text = "--:--"
     timeLabel.TextColor3 = Color3.fromRGB(220, 220, 255)
@@ -67,18 +67,6 @@ local function setupSlotTimer(parentGui)
     timeLabel.TextSize = 18
     timeLabel.TextXAlignment = Enum.TextXAlignment.Center
     timeLabel.Parent = mainFrame
-    
-    -- Статус
-    local statusLabel = Instance.new("TextLabel")
-    statusLabel.Size = UDim2.new(1, 0, 0, 18)
-    statusLabel.Position = UDim2.new(0, 0, 0, 65)
-    statusLabel.BackgroundTransparency = 1
-    statusLabel.Text = "Waiting..."
-    statusLabel.TextColor3 = Color3.fromRGB(150, 150, 200)
-    statusLabel.Font = Enum.Font.Gotham
-    statusLabel.TextSize = 10
-    statusLabel.TextXAlignment = Enum.TextXAlignment.Center
-    statusLabel.Parent = mainFrame
     
     -- Перетаскивание
     local dragging = false
@@ -109,7 +97,7 @@ local function setupSlotTimer(parentGui)
     local remainingSeconds = 0
     local slotTimeEvent = nil
     
-    -- Поиск SlotTime RemoteEvent (тихо, без логов)
+    -- Поиск SlotTime RemoteEvent
     for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
         if obj:IsA("RemoteEvent") and obj.Name == "SlotTime" then
             slotTimeEvent = obj
@@ -144,19 +132,11 @@ local function setupSlotTimer(parentGui)
                 if data.Seconds then remainingSeconds = data.Seconds end
                 if data.remaining then remainingSeconds = data.remaining end
             end
-            statusLabel.Text = "Slot time received"
-            statusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-            task.wait(2)
-            statusLabel.Text = "Wait for next spin"
-            statusLabel.TextColor3 = Color3.fromRGB(150, 150, 200)
         end)
         
         pcall(function()
             slotTimeEvent:FireServer()
         end)
-    else
-        statusLabel.Text = "SlotTime not found"
-        statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
     end
     
     -- Поиск значения в IntValue или NumberValue
@@ -231,8 +211,6 @@ local function setupSlotTimer(parentGui)
         else
             timeLabel.Text = "READY!"
             timeLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-            statusLabel.Text = "🎉 Ready to spin!"
-            statusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
             requestTime()
         end
     end
@@ -243,13 +221,6 @@ local function setupSlotTimer(parentGui)
             manualSetTime()
         elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
             requestTime()
-            statusLabel.Text = "Requesting..."
-            statusLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
-            task.wait(1)
-            if remainingSeconds > 0 then
-                statusLabel.Text = "Wait for next spin"
-                statusLabel.TextColor3 = Color3.fromRGB(150, 150, 200)
-            end
         end
     end)
     
