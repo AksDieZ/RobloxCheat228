@@ -1,0 +1,276 @@
+-- Slot Timer - отслеживание времени до следующей крутки (15 минут)
+local function setupSlotTimer(parentGui)
+    local Players = game:GetService("Players")
+    local LocalPlayer = Players.LocalPlayer
+    local UIS = game:GetService("UserInputService")
+    local ReplicatedStorage = game:GetService("ReplicatedStorage")
+    
+    -- Создаём GUI (если parentGui не указан, создаём отдельно)
+    local gui
+    if parentGui then
+        gui = parentGui
+    else
+        gui = Instance.new("ScreenGui")
+        gui.Name = "SlotTimer"
+        gui.Parent = game:GetService("CoreGui")
+        gui.ResetOnSpawn = false
+    end
+    
+    -- Главное окно (перетаскиваемое)
+    local mainFrame = Instance.new("Frame")
+    mainFrame.Size = UDim2.new(0, 200, 0, 85)
+    mainFrame.Position = UDim2.new(0, 10, 0.5, -42)
+    mainFrame.BackgroundColor3 = Color3.fromRGB(15, 12, 30)
+    mainFrame.BackgroundTransparency = 0.1
+    mainFrame.BorderSizePixel = 0
+    mainFrame.Parent = gui
+    
+    local corner = Instance.new("UICorner")
+    corner.CornerRadius = UDim.new(0, 12)
+    corner.Parent = mainFrame
+    
+    local stroke = Instance.new("UIStroke")
+    stroke.Color = Color3.fromRGB(120, 80, 200)
+    stroke.Thickness = 1.5
+    stroke.Transparency = 0.5
+    stroke.Parent = mainFrame
+    
+    -- Заголовок для перетаскивания
+    local titleBar = Instance.new("Frame")
+    titleBar.Size = UDim2.new(1, 0, 0, 28)
+    titleBar.BackgroundColor3 = Color3.fromRGB(45, 35, 90)
+    titleBar.BorderSizePixel = 0
+    titleBar.Parent = mainFrame
+    
+    local titleCorner = Instance.new("UICorner")
+    titleCorner.CornerRadius = UDim.new(0, 12)
+    titleCorner.Parent = titleBar
+    
+    local titleText = Instance.new("TextLabel")
+    titleText.Size = UDim2.new(1, 0, 1, 0)
+    titleText.BackgroundTransparency = 1
+    titleText.Text = "🎰 SLOT TIMER"
+    titleText.TextColor3 = Color3.fromRGB(255, 200, 100)
+    titleText.Font = Enum.Font.GothamBold
+    titleText.TextSize = 12
+    titleText.TextXAlignment = Enum.TextXAlignment.Center
+    titleText.Parent = titleBar
+    
+    -- Время
+    local timeLabel = Instance.new("TextLabel")
+    timeLabel.Size = UDim2.new(1, 0, 0, 35)
+    timeLabel.Position = UDim2.new(0, 0, 0, 32)
+    timeLabel.BackgroundTransparency = 1
+    timeLabel.Text = "--:--"
+    timeLabel.TextColor3 = Color3.fromRGB(220, 220, 255)
+    timeLabel.Font = Enum.Font.GothamBold
+    timeLabel.TextSize = 18
+    timeLabel.TextXAlignment = Enum.TextXAlignment.Center
+    timeLabel.Parent = mainFrame
+    
+    -- Статус
+    local statusLabel = Instance.new("TextLabel")
+    statusLabel.Size = UDim2.new(1, 0, 0, 18)
+    statusLabel.Position = UDim2.new(0, 0, 0, 65)
+    statusLabel.BackgroundTransparency = 1
+    statusLabel.Text = "Waiting..."
+    statusLabel.TextColor3 = Color3.fromRGB(150, 150, 200)
+    statusLabel.Font = Enum.Font.Gotham
+    statusLabel.TextSize = 10
+    statusLabel.TextXAlignment = Enum.TextXAlignment.Center
+    statusLabel.Parent = mainFrame
+    
+    -- Перетаскивание
+    local dragging = false
+    local dragStart, startPos
+    
+    titleBar.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = true
+            dragStart = input.Position
+            startPos = mainFrame.Position
+        end
+    end)
+    
+    UIS.InputEnded:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton1 then
+            dragging = false
+        end
+    end)
+    
+    UIS.InputChanged:Connect(function(input)
+        if dragging and input.UserInputType == Enum.UserInputType.MouseMovement then
+            local delta = input.Position - dragStart
+            mainFrame.Position = UDim2.new(startPos.X.Scale, startPos.X.Offset + delta.X, startPos.Y.Scale, startPos.Y.Offset + delta.Y)
+        end
+    end)
+    
+    -- Переменные
+    local remainingSeconds = 0
+    local slotTimeEvent = nil
+    
+    -- Поиск SlotTime RemoteEvent (тихо, без логов)
+    for _, obj in pairs(ReplicatedStorage:GetDescendants()) do
+        if obj:IsA("RemoteEvent") and obj.Name == "SlotTime" then
+            slotTimeEvent = obj
+            break
+        end
+    end
+    
+    if not slotTimeEvent then
+        for _, obj in pairs(game:GetDescendants()) do
+            if obj:IsA("RemoteEvent") and obj.Name == "SlotTime" then
+                slotTimeEvent = obj
+                break
+            end
+        end
+    end
+    
+    -- Получение времени из SlotTime
+    if slotTimeEvent then
+        slotTimeEvent.OnClientEvent:Connect(function(data)
+            if type(data) == "number" then
+                remainingSeconds = data
+            elseif type(data) == "string" then
+                local mins, secs = data:match("(%d+):(%d+)")
+                if mins and secs then
+                    remainingSeconds = tonumber(mins) * 60 + tonumber(secs)
+                else
+                    local num = tonumber(data)
+                    if num then remainingSeconds = num end
+                end
+            elseif type(data) == "table" then
+                if data.Time then remainingSeconds = data.Time end
+                if data.Seconds then remainingSeconds = data.Seconds end
+                if data.remaining then remainingSeconds = data.remaining end
+            end
+            statusLabel.Text = "Slot time received"
+            statusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+            task.wait(2)
+            statusLabel.Text = "Wait for next spin"
+            statusLabel.TextColor3 = Color3.fromRGB(150, 150, 200)
+        end)
+        
+        pcall(function()
+            slotTimeEvent:FireServer()
+        end)
+    else
+        statusLabel.Text = "SlotTime not found"
+        statusLabel.TextColor3 = Color3.fromRGB(255, 100, 100)
+    end
+    
+    -- Поиск значения в IntValue или NumberValue
+    local function findSlotValue()
+        local searchPaths = {
+            LocalPlayer:FindFirstChild("SlotTime"),
+            LocalPlayer:FindFirstChild("SlotTimes"),
+            LocalPlayer:FindFirstChild("SlotCooldown"),
+            ReplicatedStorage:FindFirstChild("SlotTime"),
+            ReplicatedStorage:FindFirstChild("SlotTimes")
+        }
+        
+        for _, val in pairs(searchPaths) do
+            if val and (val:IsA("IntValue") or val:IsA("NumberValue")) then
+                local timeVal = val.Value
+                if timeVal and timeVal > 0 then
+                    remainingSeconds = timeVal
+                    return true
+                end
+            end
+        end
+        return false
+    end
+    
+    findSlotValue()
+    
+    -- Ручной ввод времени
+    local function manualSetTime()
+        local userInput = game:GetService("StarterGui"):SetCore("InputBox", {
+            Title = "Slot Timer",
+            Text = "Осталось минут до крутки:",
+            DefaultText = "15"
+        })
+        
+        if userInput then
+            local minutes = tonumber(userInput)
+            if minutes and minutes > 0 then
+                remainingSeconds = minutes * 60
+                game:GetService("StarterGui"):SetCore("SendNotification", {
+                    Title = "Slot Timer",
+                    Text = "Time set to " .. minutes .. " minutes",
+                    Duration = 2
+                })
+            end
+        end
+    end
+    
+    -- Запрос времени
+    local function requestTime()
+        if slotTimeEvent then
+            pcall(function()
+                slotTimeEvent:FireServer()
+            end)
+        end
+    end
+    
+    -- Обновление времени
+    local function updateTime()
+        if remainingSeconds > 0 then
+            local mins = math.floor(remainingSeconds / 60)
+            local secs = remainingSeconds % 60
+            
+            if mins >= 60 then
+                local hours = math.floor(mins / 60)
+                mins = mins % 60
+                timeLabel.Text = string.format("%02d:%02d:%02d", hours, mins, secs)
+            else
+                timeLabel.Text = string.format("%02d:%02d", mins, secs)
+            end
+            timeLabel.TextColor3 = Color3.fromRGB(220, 220, 255)
+            remainingSeconds = remainingSeconds - 1
+        else
+            timeLabel.Text = "READY!"
+            timeLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+            statusLabel.Text = "🎉 Ready to spin!"
+            statusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+            requestTime()
+        end
+    end
+    
+    -- Клик по окну
+    mainFrame.InputBegan:Connect(function(input)
+        if input.UserInputType == Enum.UserInputType.MouseButton2 then
+            manualSetTime()
+        elseif input.UserInputType == Enum.UserInputType.MouseButton1 then
+            requestTime()
+            statusLabel.Text = "Requesting..."
+            statusLabel.TextColor3 = Color3.fromRGB(255, 200, 100)
+            task.wait(1)
+            if remainingSeconds > 0 then
+                statusLabel.Text = "Wait for next spin"
+                statusLabel.TextColor3 = Color3.fromRGB(150, 150, 200)
+            end
+        end
+    end)
+    
+    -- Запрос времени каждые 30 секунд
+    task.spawn(function()
+        while mainFrame and mainFrame.Parent do
+            task.wait(30)
+            requestTime()
+        end
+    end)
+    
+    -- Обновление каждую секунду
+    task.spawn(function()
+        while mainFrame and mainFrame.Parent do
+            updateTime()
+            task.wait(1)
+        end
+    end)
+    
+    return mainFrame
+end
+
+-- Запускаем
+setupSlotTimer()
